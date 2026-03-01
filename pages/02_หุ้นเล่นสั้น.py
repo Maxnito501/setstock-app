@@ -12,9 +12,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import yfinance as yf
 import re
+import time
 
 # ตั้งค่าเพจ
 st.set_page_config(
@@ -49,6 +50,7 @@ st.markdown("""
         padding: 1rem;
         border-radius: 10px;
         text-align: center;
+        margin: 1rem 0;
     }
     .wait-signal {
         background: #f59e0b;
@@ -56,6 +58,7 @@ st.markdown("""
         padding: 1rem;
         border-radius: 10px;
         text-align: center;
+        margin: 1rem 0;
     }
     .neutral-signal {
         background: #6b7280;
@@ -63,6 +66,7 @@ st.markdown("""
         padding: 1rem;
         border-radius: 10px;
         text-align: center;
+        margin: 1rem 0;
     }
     .guru-quote {
         background: #fff3cd;
@@ -71,6 +75,13 @@ st.markdown("""
         border-radius: 10px;
         margin: 1rem 0;
         font-style: italic;
+    }
+    .metric-box {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 10px;
+        text-align: center;
+        border-left: 3px solid #667eea;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -84,8 +95,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.markdown("---")
 
-# ฟังก์ชันคำนวณ RSI
+# ================== ฟังก์ชันคำนวณ indicators ==================
+
 def calculate_rsi(prices, period=14):
+    """คำนวณ RSI"""
     delta = prices.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
@@ -93,24 +106,49 @@ def calculate_rsi(prices, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# ฟังก์ชันคำนวณ MACD
 def calculate_macd(prices, fast=12, slow=26, signal=9):
+    """คำนวณ MACD"""
     exp1 = prices.ewm(span=fast, adjust=False).mean()
     exp2 = prices.ewm(span=slow, adjust=False).mean()
     macd = exp1 - exp2
     signal_line = macd.ewm(span=signal, adjust=False).mean()
-    return macd, signal_line
+    histogram = macd - signal_line
+    return macd, signal_line, histogram
 
-# ฟังก์ชันคำนวณ Stochastic
 def calculate_stochastic(df, k=14, d=3):
+    """คำนวณ Stochastic"""
     low_min = df['Low'].rolling(window=k).min()
     high_max = df['High'].rolling(window=k).max()
     stoch_k = 100 * ((df['Close'] - low_min) / (high_max - low_min))
     stoch_d = stoch_k.rolling(window=d).mean()
     return stoch_k, stoch_d
 
-# ฟังก์ชันแปลงข้อความเป็นตัวเลข
+def analyze_elliot_wave(prices):
+    """วิเคราะห์ Elliot Wave แบบง่าย"""
+    if len(prices) < 50:
+        return "ข้อมูลไม่พอ", 50
+    
+    prices_array = prices.values
+    last_20 = prices_array[-20:]
+    last_high = last_20.max()
+    last_low = last_20.min()
+    last_price = prices_array[-1]
+    
+    price_range = last_high - last_low
+    if price_range > 0:
+        position = (last_price - last_low) / price_range
+    else:
+        position = 0.5
+    
+    if position > 0.8:
+        return "ขาขึ้น (Wave 3)", 80
+    elif position < 0.2:
+        return "ขาลง (Wave 2)", 20
+    else:
+        return "Sideways (Wave 4)", 50
+
 def parse_volume(text, max_values=5):
+    """แปลงข้อความเป็นตัวเลข"""
     if not text or not text.strip():
         return []
     numbers = re.findall(r'[\d,]+', text)
@@ -123,10 +161,12 @@ def parse_volume(text, max_values=5):
             continue
     return volumes[:max_values]
 
-# Sidebar
+# ================== Sidebar ==================
+
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/stocks--v1.png", width=60)
     st.subheader("🔍 เลือกหุ้น")
+    
     symbol = st.text_input("รหัสหุ้น", "ADVANC").upper()
     
     st.markdown("---")
@@ -139,7 +179,7 @@ with st.sidebar:
     if has_stock:
         col1, col2 = st.columns(2)
         with col1:
-            buy_price = st.number_input("ราคาที่ซื้อ", min_value=0.0, step=0.5)
+            buy_price = st.number_input("ราคาที่ซื้อ", min_value=0.0, step=0.5, format="%.2f")
         with col2:
             quantity = st.number_input("จำนวน", min_value=0, step=100)
     
@@ -153,47 +193,62 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# ดึงข้อมูล
+# ================== ดึงข้อมูล ==================
+
 @st.cache_data(ttl=60)
 def load_data(symbol, period):
     try:
         ticker = yf.Ticker(f"{symbol}.BK")
         df = ticker.history(period=period)
-        return df, True
-    except:
-        return None, False
+        info = ticker.info
+        return df, info, True
+    except Exception as e:
+        return None, None, False
 
-df, success = load_data(symbol, period)
+df, info, success = load_data(symbol, period)
 
 if not success or df is None or df.empty:
     st.error(f"❌ ไม่สามารถดึงข้อมูล {symbol} ได้")
+    st.info("ตรวจสอบรหัสหุ้น เช่น ADVANC, PTT, CPALL")
     st.stop()
 
-# คำนวณค่าต่างๆ
+# ================== คำนวณค่าต่างๆ ==================
+
 current_price = df['Close'].iloc[-1]
 prev_price = df['Close'].iloc[-2]
 change = current_price - prev_price
 change_pct = (change / prev_price) * 100
 
+# RSI
 rsi = calculate_rsi(df['Close'])
 current_rsi = rsi.iloc[-1] if not pd.isna(rsi.iloc[-1]) else 50
 
-macd, signal_line = calculate_macd(df['Close'])
+# MACD
+macd, signal_line, histogram = calculate_macd(df['Close'])
 current_macd = macd.iloc[-1] if not pd.isna(macd.iloc[-1]) else 0
 current_signal = signal_line.iloc[-1] if not pd.isna(signal_line.iloc[-1]) else 0
 
+# Stochastic
 stoch_k, stoch_d = calculate_stochastic(df)
 current_k = stoch_k.iloc[-1] if not pd.isna(stoch_k.iloc[-1]) else 50
 
+# Elliot Wave
+wave_status, wave_score = analyze_elliot_wave(df['Close'])
+
+# Moving Averages
 ma20 = df['Close'].rolling(20).mean().iloc[-1]
 ma50 = df['Close'].rolling(50).mean().iloc[-1]
+
+# แนวรับ/แนวต้าน
 support = df['Low'].tail(20).min()
 resistance = df['High'].tail(20).max()
 
-# Tabs
+# ================== Tabs ==================
+
 tab1, tab2, tab3 = st.tabs(["📈 กราฟเทคนิคอล", "🎯 จุดซื้อขาย", "🐋 วิเคราะห์วอลุ่ม"])
 
-# ================== TAB 1 ==================
+# ================== TAB 1: กราฟเทคนิคอล ==================
+
 with tab1:
     st.subheader(f"📈 กราฟเทคนิคอล {symbol}")
     
@@ -205,27 +260,29 @@ with tab1:
         subplot_titles=('ราคา', 'Volume', 'RSI', 'Stochastic')
     )
     
-    # กราฟแท่งเทียน
     fig.add_trace(
         go.Candlestick(
-            x=df.index, open=df['Open'], high=df['High'],
-            low=df['Low'], close=df['Close'], name='ราคา'
-        ), row=1, col=1
+            x=df.index,
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name='ราคา'
+        ),
+        row=1, col=1
     )
     
-    # Moving Averages
     fig.add_trace(
         go.Scatter(x=df.index, y=df['Close'].rolling(20).mean(),
-                  name='MA20', line=dict(color='orange')),
+                  name='MA20', line=dict(color='orange', width=1.5)),
         row=1, col=1
     )
     fig.add_trace(
         go.Scatter(x=df.index, y=df['Close'].rolling(50).mean(),
-                  name='MA50', line=dict(color='blue')),
+                  name='MA50', line=dict(color='blue', width=1.5)),
         row=1, col=1
     )
     
-    # Volume
     colors = ['red' if df['Open'].iloc[i] > df['Close'].iloc[i] else 'green' 
               for i in range(len(df))]
     fig.add_trace(
@@ -233,21 +290,19 @@ with tab1:
         row=2, col=1
     )
     
-    # RSI
     fig.add_trace(
-        go.Scatter(x=df.index, y=rsi, name='RSI', line=dict(color='purple')),
+        go.Scatter(x=df.index, y=rsi, name='RSI', line=dict(color='purple', width=2)),
         row=3, col=1
     )
     fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
     fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
     
-    # Stochastic
     fig.add_trace(
-        go.Scatter(x=df.index, y=stoch_k, name='%K', line=dict(color='blue')),
+        go.Scatter(x=df.index, y=stoch_k, name='%K', line=dict(color='blue', width=2)),
         row=4, col=1
     )
     fig.add_trace(
-        go.Scatter(x=df.index, y=stoch_d, name='%D', line=dict(color='red')),
+        go.Scatter(x=df.index, y=stoch_d, name='%D', line=dict(color='red', width=2)),
         row=4, col=1
     )
     fig.add_hline(y=80, line_dash="dash", line_color="red", row=4, col=1)
@@ -256,7 +311,8 @@ with tab1:
     fig.update_layout(height=800, showlegend=True, hovermode='x unified')
     st.plotly_chart(fig, use_container_width=True)
 
-# ================== TAB 2 ==================
+# ================== TAB 2: จุดซื้อขาย ==================
+
 with tab2:
     st.subheader("🎯 จุดซื้อขาย")
     
@@ -264,7 +320,8 @@ with tab2:
     
     with col1:
         st.markdown("### 📊 สถานะปัจจุบัน")
-        st.metric("ราคา", f"฿{current_price:.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
+        st.metric("ราคาปัจจุบัน", f"฿{current_price:.2f}", 
+                 f"{change:+.2f} ({change_pct:+.2f}%)")
         
         if current_price > ma20 and ma20 > ma50:
             st.success("🟢 แนวโน้มขาขึ้น")
@@ -276,6 +333,7 @@ with tab2:
         st.markdown(f"**RSI:** {current_rsi:.1f}")
         st.markdown(f"**MACD:** {'Bullish' if current_macd > current_signal else 'Bearish'}")
         st.markdown(f"**Stochastic:** {current_k:.1f}")
+        st.markdown(f"**Elliot Wave:** {wave_status}")
         st.markdown(f"**แนวรับ:** ฿{support:.2f}")
         st.markdown(f"**แนวต้าน:** ฿{resistance:.2f}")
     
@@ -291,11 +349,13 @@ with tab2:
         
         if has_stock and buy_price > 0:
             st.markdown("---")
+            st.markdown("### 📊 สถานะพอร์ต")
             profit_loss = (current_price - buy_price) * quantity
             profit_pct = ((current_price - buy_price) / buy_price) * 100
             st.metric("กำไร/ขาดทุน", f"฿{profit_loss:,.2f}", f"{profit_pct:+.2f}%")
 
-# ================== TAB 3 ==================
+# ================== TAB 3: วิเคราะห์วอลุ่ม ==================
+
 with tab3:
     st.subheader("🐋 วิเคราะห์วอลุ่ม 5 ช่อง")
     
@@ -308,3 +368,4 @@ with tab3:
     
     with st.expander("📋 ดูตัวอย่าง"):
         st.markdown("""
+        วางแบบนี้ก็ได้:
