@@ -184,7 +184,7 @@ with col1:
         st.markdown("---")
         st.subheader("🎯 วิเคราะห์ตามกลยุทธ์นายพราน")
         
-        analysis = api.analyze_volume_layers(bid_offer=quote, top_n=layers)
+        analysis = api.analyze_volume(symbol)
         
         acol1, acol2, acol3 = st.columns(3)
         
