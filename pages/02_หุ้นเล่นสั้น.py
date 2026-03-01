@@ -530,33 +530,37 @@ with tab2:
     signal_count = len(buy_signals) - len(sell_signals)
     
     if signal_count >= 2:
-        st.markdown("""
-        <div class="buy-signal">
-            <h2>🟢 แนะนำ: ซื้อ</h2>
-            <p>สัญญาณซื้อแรง รอจังหวะที่แนวรับ</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            '<div class="buy-signal">'
+            '<h2>🟢 แนะนำ: ซื้อ</h2>'
+            '<p>สัญญาณซื้อแรง รอจังหวะที่แนวรับ</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )
     elif signal_count <= -2:
-        st.markdown("""
-        <div class="sell-signal">
-            <h2>🔴 แนะนำ: ขาย</h2>
-            <p>สัญญาณขายแรง รอจังหวะขายทำกำไร</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sell-signal">'
+            '<h2>🔴 แนะนำ: ขาย</h2>'
+            '<p>สัญญาณขายแรง รอจังหวะขายทำกำไร</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )
     elif signal_count > 0:
-        st.markdown("""
-        <div class="wait-signal">
-            <h2>🟡 แนะนำ: รอ</h2>
-            <p>มีสัญญาณซื้อบางส่วน รอให้ชัดเจน</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            '<div class="wait-signal">'
+            '<h2>🟡 แนะนำ: รอ</h2>'
+            '<p>มีสัญญาณซื้อบางส่วน รอให้ชัดเจน</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )
     else:
-        st.markdown("""
-        <div class="neutral-signal">
-            <h2>⚪ แนะนำ: เฝ้าดู</h2>
-            <p>ไม่มีสัญญาณชัดเจน</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            '<div class="neutral-signal">'
+            '<h2>⚪ แนะนำ: เฝ้าดู</h2>'
+            '<p>ไม่มีสัญญาณชัดเจน</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
 # ================== TAB 3: วิเคราะห์วอลุ่ม 5 ช่อง ==================
 
