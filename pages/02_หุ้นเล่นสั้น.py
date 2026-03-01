@@ -1,8 +1,9 @@
 """
-หน้า 2: วิเคราะห์หุ้นเล่นสั้น ฉบับสมบูรณ์
+หน้า 2: วิเคราะห์หุ้นเล่นสั้น ฉบับสมบูรณ์ (ไม่ใช้ scipy)
 - กราฟเทคนิคอลครบ (RSI, MACD, Stochastic, Elliot Wave)
 - จุดซื้อ ขาย ถัว Cut Loss
 - วางข้อมูลวอลุ่ม 5 ช่องจากโปรแกรมเทรด วิเคราะห์ตามนายพราน
+- รองรับ Python 3.13
 """
 
 import streamlit as st
@@ -15,13 +16,14 @@ import os
 from datetime import datetime, timedelta
 import yfinance as yf
 import re
+import time
 
 # เพิ่ม path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # ตั้งค่าเพจ
 st.set_page_config(
-    page_title="หุ้นเล่นสั้น V3.0",
+    page_title="หุ้นเล่นสั้น V3.1",
     page_icon="⚡",
     layout="wide"
 )
@@ -106,13 +108,15 @@ st.markdown("""
 st.markdown("""
 <div style="display: flex; align-items: center; margin-bottom: 1rem;">
     <h1>⚡ วิเคราะห์หุ้นเล่นสั้น</h1>
-    <span class="version-badge">V3.0 พร้อมลุยตลาดจริง</span>
+    <span class="version-badge">V3.1 รองรับ Python 3.13</span>
 </div>
 """, unsafe_allow_html=True)
 st.markdown("---")
 
-# ฟังก์ชันคำนวณ RSI
+# ================== ฟังก์ชันคำนวณ indicators ==================
+
 def calculate_rsi(prices, period=14):
+    """คำนวณ RSI"""
     delta = prices.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
@@ -120,8 +124,8 @@ def calculate_rsi(prices, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# ฟังก์ชันคำนวณ MACD
 def calculate_macd(prices, fast=12, slow=26, signal=9):
+    """คำนวณ MACD"""
     exp1 = prices.ewm(span=fast, adjust=False).mean()
     exp2 = prices.ewm(span=slow, adjust=False).mean()
     macd = exp1 - exp2
@@ -129,55 +133,50 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     histogram = macd - signal_line
     return macd, signal_line, histogram
 
-# ฟังก์ชันคำนวณ Stochastic
 def calculate_stochastic(df, k=14, d=3):
+    """คำนวณ Stochastic"""
     low_min = df['Low'].rolling(window=k).min()
     high_max = df['High'].rolling(window=k).max()
     stoch_k = 100 * ((df['Close'] - low_min) / (high_max - low_min))
     stoch_d = stoch_k.rolling(window=d).mean()
     return stoch_k, stoch_d
 
-# ฟังก์ชัน Elliot Wave แบบง่าย
 def analyze_elliot_wave(prices):
-    from scipy.signal import argrelextrema
-    
+    """วิเคราะห์ Elliot Wave แบบง่าย (ไม่ใช้ scipy)"""
     if len(prices) < 50:
-        return "ข้อมูลไม่พอ", 0
+        return "📊 ข้อมูลไม่พอ", 50
     
+    # ใช้ pandas แทน scipy
     prices_array = prices.values
-    local_max = argrelextrema(prices_array, np.greater, order=5)[0]
-    local_min = argrelextrema(prices_array, np.less, order=5)[0]
     
+    # หาจุดสูงสุดต่ำสุดใน 20 วันล่าสุด
+    last_20 = prices_array[-20:]
+    last_high = last_20.max()
+    last_low = last_20.min()
     last_price = prices_array[-1]
-    if len(local_max) > 0 and len(local_min) > 0:
-        last_high = prices_array[local_max[-1]] if len(local_max) > 0 else last_price
-        last_low = prices_array[local_min[-1]] if len(local_min) > 0 else last_price
-        
-        price_range = last_high - last_low
-        if price_range > 0:
-            position = (last_price - last_low) / price_range
-        else:
-            position = 0.5
-        
-        if position > 0.8:
-            return "📈 Wave 3 (กำลังขึ้นแรง)", 80
-        elif position < 0.2:
-            return "📉 Wave 2 (ใกล้จบ correction)", 20
-        else:
-            return "📊 Wave 4 (sideways)", 50
+    
+    price_range = last_high - last_low
+    if price_range > 0:
+        position = (last_price - last_low) / price_range
     else:
-        return "ไม่พบรูปแบบ", 0
+        position = 0.5
+    
+    # วิเคราะห์ตำแหน่ง
+    if position > 0.8:
+        return "📈 แนวโน้มขาขึ้น (Wave 3)", 80
+    elif position < 0.2:
+        return "📉 แนวโน้มขาลง (Wave 2)", 20
+    else:
+        return "📊 Sideways (Wave 4)", 50
 
-# ฟังก์ชันแปลงข้อความเป็นตัวเลข (รองรับทุก format)
 def parse_volume(text, max_values=5):
-    """แปลงข้อความที่วางมาให้เป็นตัวเลข รองรับ comma, space, tab, ตัวหนังสือ"""
+    """แปลงข้อความเป็นตัวเลข รองรับ comma, space, ตัวหนังสือ"""
     if not text or not text.strip():
         return []
     
-    # ค้นหาตัวเลขทั้งหมดในข้อความ
+    # ค้นหาตัวเลขทั้งหมด
     numbers = re.findall(r'[\d,]+', text)
     
-    # แปลงเป็น int (ลบ comma ออก)
     volumes = []
     for num in numbers:
         clean = num.replace(',', '')
@@ -188,7 +187,8 @@ def parse_volume(text, max_values=5):
     
     return volumes[:max_values]
 
-# Sidebar
+# ================== Sidebar ==================
+
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/stocks--v1.png", width=60)
     st.subheader("🔍 เลือกหุ้น")
@@ -219,7 +219,8 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# ดึงข้อมูลจาก Yahoo
+# ================== ดึงข้อมูลจาก Yahoo ==================
+
 @st.cache_data(ttl=60)
 def load_data(symbol, period):
     try:
@@ -237,33 +238,43 @@ if not success or df is None or df.empty:
     st.info("ตรวจสอบรหัสหุ้น เช่น ADVANC, PTT, CPALL")
     st.stop()
 
-# คำนวณ indicators
+# ================== คำนวณค่าต่างๆ ==================
+
 current_price = df['Close'].iloc[-1]
 prev_price = df['Close'].iloc[-2]
 change = current_price - prev_price
 change_pct = (change / prev_price) * 100
 
+# RSI
 rsi = calculate_rsi(df['Close'])
-current_rsi = rsi.iloc[-1] if not rsi.isna().all() else 50
+current_rsi = rsi.iloc[-1] if not pd.isna(rsi.iloc[-1]) else 50
 
+# MACD
 macd, signal_line, histogram = calculate_macd(df['Close'])
-current_macd = macd.iloc[-1] if not macd.isna().all() else 0
-current_signal = signal_line.iloc[-1] if not signal_line.isna().all() else 0
+current_macd = macd.iloc[-1] if not pd.isna(macd.iloc[-1]) else 0
+current_signal = signal_line.iloc[-1] if not pd.isna(signal_line.iloc[-1]) else 0
 
+# Stochastic
 stoch_k, stoch_d = calculate_stochastic(df)
-current_k = stoch_k.iloc[-1] if not stoch_k.isna().all() else 50
+current_k = stoch_k.iloc[-1] if not pd.isna(stoch_k.iloc[-1]) else 50
 
+# Elliot Wave
 wave_status, wave_score = analyze_elliot_wave(df['Close'])
 
+# Moving Averages
 ma20 = df['Close'].rolling(20).mean().iloc[-1]
 ma50 = df['Close'].rolling(50).mean().iloc[-1]
+
+# แนวรับ/แนวต้าน
 support = df['Low'].tail(20).min()
 resistance = df['High'].tail(20).max()
 
-# Tabs
+# ================== Tabs ==================
+
 tab1, tab2, tab3 = st.tabs(["📈 กราฟเทคนิคอล", "🎯 จุดซื้อขาย", "🐋 วิเคราะห์วอลุ่ม 5 ช่อง"])
 
-# ================== TAB 1 ==================
+# ================== TAB 1: กราฟเทคนิคอล ==================
+
 with tab1:
     st.subheader(f"📈 กราฟเทคนิคอล {symbol}")
     
@@ -358,7 +369,8 @@ with tab1:
     with col4:
         st.metric("วอลุ่ม", f"{df['Volume'].iloc[-1]:,.0f}")
 
-# ================== TAB 2 ==================
+# ================== TAB 2: จุดซื้อขาย ==================
+
 with tab2:
     st.subheader("🎯 จุดซื้อขาย และวิเคราะห์")
     
@@ -515,21 +527,23 @@ with tab2:
     
     # คำแนะนำสุดท้าย
     st.markdown("---")
-    if len(buy_signals) >= 3:
+    signal_count = len(buy_signals) - len(sell_signals)
+    
+    if signal_count >= 2:
         st.markdown("""
         <div class="buy-signal">
             <h2>🟢 แนะนำ: ซื้อ</h2>
             <p>สัญญาณซื้อแรง รอจังหวะที่แนวรับ</p>
         </div>
         """, unsafe_allow_html=True)
-    elif len(sell_signals) >= 3:
+    elif signal_count <= -2:
         st.markdown("""
         <div class="sell-signal">
             <h2>🔴 แนะนำ: ขาย</h2>
             <p>สัญญาณขายแรง รอจังหวะขายทำกำไร</p>
         </div>
         """, unsafe_allow_html=True)
-    elif len(buy_signals) >= 2:
+    elif signal_count > 0:
         st.markdown("""
         <div class="wait-signal">
             <h2>🟡 แนะนำ: รอ</h2>
@@ -544,7 +558,8 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
 
-# ================== TAB 3 ==================
+# ================== TAB 3: วิเคราะห์วอลุ่ม 5 ช่อง ==================
+
 with tab3:
     st.subheader("🐋 วิเคราะห์วอลุ่ม 5 ช่อง (วางข้อมูลจากโปรแกรมเทรด)")
     
