@@ -567,8 +567,8 @@ with tab2:
 with tab3:
     st.subheader("🐋 วิเคราะห์วอลุ่ม 5 ช่อง (วางข้อมูลจากโปรแกรมเทรด)")
     
+    st.markdown("### วิธีใช้")
     st.markdown("""
-    ### วิธีใช้
     1. เปิดโปรแกรมเทรด (InnovestX, Dime, Streaming)
     2. **เลือกและคัดลอก** ข้อมูล Bid/Offer 5 ช่อง
     3. **วาง (Ctrl+V)** ในช่องด้านล่าง
