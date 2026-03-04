@@ -33,7 +33,11 @@ st.set_page_config(
 def get_api():
     return SETSmartAPI()
 
-api = get_api()
+# ตรวจสอบ session state
+if 'api' not in st.session_state:
+    st.session_state.api = get_api()
+
+api = st.session_state.api
 
 # ================== CSS ==================
 
@@ -140,9 +144,10 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⚙️ ตั้งค่า")
     
-    # เลือกโหมดข้อมูล
-    use_mock = st.checkbox("ใช้ข้อมูลตัวอย่าง (Mock Mode)", value=api.use_mock)
-    if use_mock != api.use_mock:
+    # เลือกโหมดข้อมูล - แก้ไขตรงนี้
+    current_mode = api.use_mock
+    use_mock = st.checkbox("ใช้ข้อมูลตัวอย่าง (Mock Mode)", value=current_mode)
+    if use_mock != current_mode:
         api.set_use_mock(use_mock)
         st.rerun()
     
@@ -170,7 +175,7 @@ portfolio_data = {
 def calculate_buffett_score(fin_data):
     """คำนวณคะแนนตามหลัก Buffett"""
     
-    if not fin_data:
+    if not fin_data or not fin_data.get('success'):
         return None
     
     score = 0
