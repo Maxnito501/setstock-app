@@ -8,8 +8,6 @@
 
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
 from datetime import datetime
 import sys
 import os
@@ -80,12 +78,6 @@ st.markdown("""
         border-radius: 10px;
         text-align: center;
     }
-    .portfolio-box {
-        background: #f0f2f6;
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 1rem 0;
-    }
     .buy-signal {
         background: #10b981;
         color: white;
@@ -130,7 +122,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/stocks--v1.png", width=60)
     st.subheader("🔍 เลือกหุ้น")
     
-    # รายชื่อหุ้นทั้งหมดที่รองรับ
+    # รายชื่อหุ้น
     stock_list = [
         'PTT', 'SCB', 'TISCO', 'AOT', 'HMPRO', 'SIRI', 'PTG',
         'PTTEP', 'KBANK', 'KTB', 'CPALL', 'BDMS', 'BH', 'GULF',
@@ -144,7 +136,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⚙️ ตั้งค่า")
     
-    # เลือกโหมดข้อมูล - แก้ไขตรงนี้
+    # เลือกโหมดข้อมูล
     current_mode = api.use_mock
     use_mock = st.checkbox("ใช้ข้อมูลตัวอย่าง (Mock Mode)", value=current_mode)
     if use_mock != current_mode:
@@ -158,7 +150,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# ================== ข้อมูลพอร์ตปัจจุบันของพี่โบ้ ==================
+# ================== ข้อมูลพอร์ตปัจจุบัน ==================
 
 portfolio_data = {
     'PTT': {'shares': 100, 'cost': 33.00},
@@ -181,7 +173,7 @@ def calculate_buffett_score(fin_data):
     score = 0
     details = []
     
-    # 1. ROE (30 คะแนน)
+    # 1. ROE
     roe = fin_data.get('roe', 0)
     if roe >= 20:
         score += 30
@@ -195,7 +187,7 @@ def calculate_buffett_score(fin_data):
     else:
         details.append({"ปัจจัย": "ROE", "ค่า": f"{roe:.1f}%", "คะแนน": 0, "สถานะ": "ต่ำ"})
     
-    # 2. P/E (25 คะแนน)
+    # 2. P/E
     pe = fin_data.get('pe', 100)
     if pe <= 10:
         score += 25
@@ -212,7 +204,7 @@ def calculate_buffett_score(fin_data):
     else:
         details.append({"ปัจจัย": "P/E", "ค่า": f"{pe:.1f}", "คะแนน": 0, "สถานะ": "แพงมาก"})
     
-    # 3. D/E (20 คะแนน)
+    # 3. D/E
     de = fin_data.get('de', 100)
     if de <= 0.3:
         score += 20
@@ -226,7 +218,7 @@ def calculate_buffett_score(fin_data):
     else:
         details.append({"ปัจจัย": "D/E", "ค่า": f"{de:.2f}", "คะแนน": 0, "สถานะ": "เสี่ยงสูง"})
     
-    # 4. EPS Growth (15 คะแนน)
+    # 4. EPS Growth
     growth = fin_data.get('eps_growth', 0)
     if growth >= 15:
         score += 15
@@ -240,7 +232,7 @@ def calculate_buffett_score(fin_data):
     else:
         details.append({"ปัจจัย": "EPS Growth", "ค่า": f"{growth:.1f}%", "คะแนน": 0, "สถานะ": "ช้า"})
     
-    # 5. Profit Margin (10 คะแนน)
+    # 5. Profit Margin
     margin = fin_data.get('profit_margin', 0)
     if margin >= 20:
         score += 10
@@ -343,10 +335,7 @@ if show_portfolio:
 st.markdown(f"## 📊 วิเคราะห์ {symbol}")
 
 with st.spinner(f"กำลังโหลดข้อมูล {symbol}..."):
-    # ดึงราคาปัจจุบัน
     price_data = api.get_eod_price(symbol)
-    
-    # ดึงข้อมูลงบการเงิน
     fin_data = api.get_financial_data(symbol)
 
 col1, col2 = st.columns([1, 2])
@@ -385,19 +374,16 @@ with col1:
         st.markdown(f"**D/E:** {fin_data.get('de', 'N/A'):.2f}")
         st.markdown(f"**ปันผล:** {fin_data.get('dividend_yield', 'N/A'):.2f}%")
         st.markdown(f"**EPS:** {fin_data.get('eps', 'N/A'):.2f}")
-        st.markdown(f"**EPS Growth:** {fin_data.get('eps_growth', 'N/A'):.2f}%")
     else:
         st.warning("ไม่สามารถดึงข้อมูลงบการเงิน")
 
 with col2:
     if fin_data and fin_data.get('success'):
-        # คำนวณ Buffett Score
         buffett = calculate_buffett_score(fin_data)
         
         if buffett:
             score = buffett['total_score']
             
-            # แสดงคะแนน
             if score >= 80:
                 st.markdown(f"""
                 <div class="score-excellent">
@@ -405,9 +391,8 @@ with col2:
                     <p>ดีมาก - เหมาะสำหรับการลงทุนระยะยาว</p>
                 </div>
                 """, unsafe_allow_html=True)
-                recommendation = "🟢 ซื้อสะสม"
-                rec_color = "buy-signal"
                 rec_text = "ซื้อสะสม"
+                rec_color = "buy-signal"
             elif score >= 60:
                 st.markdown(f"""
                 <div class="score-good">
@@ -415,9 +400,8 @@ with col2:
                     <p>ดี - ผ่านเกณฑ์พื้นฐาน</p>
                 </div>
                 """, unsafe_allow_html=True)
-                recommendation = "🟡 ถือ/รอซื้อ"
-                rec_color = "hold-signal"
                 rec_text = "ถือ/รอซื้อ"
+                rec_color = "hold-signal"
             elif score >= 40:
                 st.markdown(f"""
                 <div class="score-fair">
@@ -425,9 +409,8 @@ with col2:
                     <p>ปานกลาง - ต้องพิจารณาเพิ่มเติม</p>
                 </div>
                 """, unsafe_allow_html=True)
-                recommendation = "⚪ เฝ้าดู"
-                rec_color = "watch-signal"
                 rec_text = "เฝ้าดู"
+                rec_color = "watch-signal"
             else:
                 st.markdown(f"""
                 <div class="score-poor">
@@ -435,16 +418,15 @@ with col2:
                     <p>อ่อน - ควรหลีกเลี่ยง</p>
                 </div>
                 """, unsafe_allow_html=True)
-                recommendation = "🔴 ขาย/หลีกเลี่ยง"
-                rec_color = "sell-signal"
                 rec_text = "ขาย/หลีกเลี่ยง"
+                rec_color = "sell-signal"
             
-            # ตารางแสดงคะแนนรายด้าน
+            # ตารางแสดงคะแนน
             st.markdown("### 📊 รายละเอียดคะแนน")
             details_df = pd.DataFrame(buffett['details'])
             st.dataframe(details_df, use_container_width=True, hide_index=True)
             
-            # แสดงจุดซื้อขาย
+            # จุดซื้อขาย
             st.markdown("---")
             st.markdown("### 🎯 จุดซื้อขายแนะนำ")
             
@@ -483,60 +465,9 @@ with col2:
             with col_c:
                 st.markdown("#### 📊 คำแนะนำ")
                 st.markdown(f"<div class='{rec_color}' style='padding:0.5rem; text-align:center; font-weight:bold;'>{rec_text}</div>", unsafe_allow_html=True)
-    
-    else:
-        st.warning("ไม่สามารถคำนวณ Buffett Score ได้")
-
-# ================== แสดงสถานะในพอร์ต (ถ้ามี) ==================
-
-if symbol in portfolio_data and price_data:
-    st.markdown("---")
-    st.markdown("### 📋 สถานะในพอร์ต")
-    
-    port = portfolio_data[symbol]
-    cost = port['cost']
-    shares = port['shares']
-    current_price = price_data['price']
-    
-    cost_value = shares * cost
-    current_value = shares * current_price
-    profit_loss = current_value - cost_value
-    profit_pct = (profit_loss / cost_value) * 100
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("จำนวนหุ้น", f"{shares}")
-    with col2:
-        st.metric("ราคาทุน", f"฿{cost:.2f}")
-    with col3:
-        st.metric("มูลค่าทุน", f"฿{cost_value:,.0f}")
-    with col4:
-        st.metric("มูลค่าปัจจุบัน", f"฿{current_value:,.0f}")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        profit_color = "🟢" if profit_loss > 0 else "🔴" if profit_loss < 0 else "⚪"
-        st.metric("กำไร/ขาดทุน", f"{profit_color} ฿{profit_loss:+,.0f}")
-    with col2:
-        st.metric("% เปลี่ยนแปลง", f"{profit_pct:+.1f}%")
-    with col3:
-        # แนะนำตามสถานะ
-        if profit_pct < -10:
-            st.info("💡 DCA ซื้อเพิ่มเมื่อลงต่อ")
-        elif profit_pct < -5:
-            st.info("💡 ถือรอ หรือ DCA เล็กน้อย")
-        elif profit_pct > 20:
-            st.success("💡 ขายบางส่วนทำกำไร")
-        else:
-            st.info("💡 ถือต่อ")
 
 # ================== Footer ==================
 
 st.markdown("---")
-col1, col2 = st.columns(2)
-with col1:
-    st.caption(f"ข้อมูล ณ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-with col2:
-    st.caption("ที่มา: SET Smart API / ข้อมูลตัวอย่าง")
+st.caption(f"ข้อมูล ณ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.caption("ที่มา: SET Smart API / ข้อมูลตัวอย่าง")
