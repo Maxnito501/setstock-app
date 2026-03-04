@@ -1,6 +1,6 @@
 """
 หน้า 3: วิเคราะห์หุ้นยาวตามปู่บัฟเฟต์ (Value Investing)
-- ใช้ SET Smart API (ของพี่โบ้)
+- ใช้ SET Smart API + Yahoo Finance Hybrid
 - วิเคราะห์ Buffett Score และดัชนีอื่นๆ
 - แนะนำซื้อ/ขาย/รอ
 - แสดงสถานะพอร์ตปัจจุบัน
@@ -260,13 +260,13 @@ st.markdown("""
 <div style="display: flex; align-items: center; justify-content: space-between;">
     <div style="display: flex; align-items: center;">
         <h1>🐂 วิเคราะห์หุ้นยาวตามปู่บัฟเฟต์</h1>
-        <span class="version-badge">SET Smart API</span>
+        <span class="version-badge">Hybrid: SETSMART + Yahoo</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # แสดงโหมดปัจจุบัน
-mode_text = "📊 ใช้ข้อมูลตัวอย่าง (Mock)" if api.use_mock else "✅ ใช้ API จริง (Live)"
+mode_text = "📊 ใช้ข้อมูลตัวอย่าง (Mock)" if api.use_mock else "✅ ใช้ API จริง + Yahoo"
 st.markdown(f"<span class='mode-badge'>{mode_text}</span>", unsafe_allow_html=True)
 st.markdown("---")
 
@@ -284,7 +284,7 @@ if show_portfolio:
         shares = data['shares']
         cost = data['cost']
         
-        # ดึงราคาปัจจุบัน
+        # ดึงราคาปัจจุบัน (ใช้ get_eod_price ที่ hybrid แล้ว)
         price_data = api.get_eod_price(sym)
         current_price = price_data['price'] if price_data and price_data.get('price') else cost
         
@@ -348,11 +348,16 @@ with col1:
         change = price_data.get('change', 0)
         change_pct = price_data.get('change_pct', 0)
         
+        # แสดงแหล่งที่มา
+        source = price_data.get('source', 'unknown')
+        source_emoji = "🔵" if source == 'setsmart' else "🟢" if source == 'yahoo' else "🟠"
+        
         st.metric(
             "ราคาปัจจุบัน", 
             f"฿{price:.2f}",
             f"{change:+.2f} ({change_pct:+.2f}%)"
         )
+        st.caption(f"แหล่งข้อมูล: {source_emoji} {source}")
         
         col_a, col_b = st.columns(2)
         with col_a:
@@ -360,7 +365,8 @@ with col1:
             st.markdown(f"**ต่ำสุด:** ฿{price_data.get('low', price):.2f}")
         with col_b:
             st.markdown(f"**เปิด:** ฿{price_data.get('open', price):.2f}")
-            st.markdown(f"**วอลุ่ม:** {price_data.get('volume', 0):,}")
+            if price_data.get('volume'):
+                st.markdown(f"**วอลุ่ม:** {price_data.get('volume', 0):,}")
     else:
         st.warning("ไม่สามารถดึงราคาปัจจุบัน")
     
@@ -374,6 +380,11 @@ with col1:
         st.markdown(f"**D/E:** {fin_data.get('de', 'N/A'):.2f}")
         st.markdown(f"**ปันผล:** {fin_data.get('dividend_yield', 'N/A'):.2f}%")
         st.markdown(f"**EPS:** {fin_data.get('eps', 'N/A'):.2f}")
+        
+        # แสดงแหล่งที่มา
+        fin_source = fin_data.get('source', 'unknown')
+        fin_emoji = "🔵" if fin_source == 'setsmart' else "🟠"
+        st.caption(f"แหล่งข้อมูลพื้นฐาน: {fin_emoji} {fin_source}")
     else:
         st.warning("ไม่สามารถดึงข้อมูลงบการเงิน")
 
@@ -397,77 +408,4 @@ with col2:
                 st.markdown(f"""
                 <div class="score-good">
                     <h2>📊 Buffett Score: {score}</h2>
-                    <p>ดี - ผ่านเกณฑ์พื้นฐาน</p>
-                </div>
-                """, unsafe_allow_html=True)
-                rec_text = "ถือ/รอซื้อ"
-                rec_color = "hold-signal"
-            elif score >= 40:
-                st.markdown(f"""
-                <div class="score-fair">
-                    <h2>⚠️ Buffett Score: {score}</h2>
-                    <p>ปานกลาง - ต้องพิจารณาเพิ่มเติม</p>
-                </div>
-                """, unsafe_allow_html=True)
-                rec_text = "เฝ้าดู"
-                rec_color = "watch-signal"
-            else:
-                st.markdown(f"""
-                <div class="score-poor">
-                    <h2>❌ Buffett Score: {score}</h2>
-                    <p>อ่อน - ควรหลีกเลี่ยง</p>
-                </div>
-                """, unsafe_allow_html=True)
-                rec_text = "ขาย/หลีกเลี่ยง"
-                rec_color = "sell-signal"
-            
-            # ตารางแสดงคะแนน
-            st.markdown("### 📊 รายละเอียดคะแนน")
-            details_df = pd.DataFrame(buffett['details'])
-            st.dataframe(details_df, use_container_width=True, hide_index=True)
-            
-            # จุดซื้อขาย
-            st.markdown("---")
-            st.markdown("### 🎯 จุดซื้อขายแนะนำ")
-            
-            col_a, col_b, col_c = st.columns(3)
-            
-            with col_a:
-                st.markdown("#### 🟢 จุดซื้อ")
-                buy_points = []
-                if buffett['pe'] < 10:
-                    buy_points.append(f"P/E {buffett['pe']:.1f} (<10)")
-                if buffett['pbv'] < 1:
-                    buy_points.append(f"P/BV {buffett['pbv']:.2f} (<1)")
-                if buffett['div'] > 5:
-                    buy_points.append(f"ปันผล {buffett['div']:.1f}% (>5%)")
-                
-                if buy_points:
-                    for point in buy_points:
-                        st.markdown(f"✅ {point}")
-                else:
-                    st.markdown("⏳ รอให้ราคาถูกลง")
-            
-            with col_b:
-                st.markdown("#### 🔴 จุดขาย")
-                sell_points = []
-                if buffett['pe'] > 20:
-                    sell_points.append(f"P/E {buffett['pe']:.1f} (>20)")
-                if buffett['pbv'] > 2:
-                    sell_points.append(f"P/BV {buffett['pbv']:.2f} (>2)")
-                
-                if sell_points:
-                    for point in sell_points:
-                        st.markdown(f"⚠️ {point}")
-                else:
-                    st.markdown("✅ ยังไม่มีสัญญาณขาย")
-            
-            with col_c:
-                st.markdown("#### 📊 คำแนะนำ")
-                st.markdown(f"<div class='{rec_color}' style='padding:0.5rem; text-align:center; font-weight:bold;'>{rec_text}</div>", unsafe_allow_html=True)
-
-# ================== Footer ==================
-
-st.markdown("---")
-st.caption(f"ข้อมูล ณ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-st.caption("ที่มา: SET Smart API / ข้อมูลตัวอย่าง")
+                    <p>ดี - ผ่านเกณฑ์พื้นฐาน
