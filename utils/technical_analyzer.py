@@ -62,43 +62,53 @@ class TechnicalAnalyzer:
         return atr
     
     def add_all_indicators(self, df):
-        """เพิ่ม indicators ทั้งหมดลงใน DataFrame"""
-        
-        # RSI
-        df['RSI_14'] = self.calculate_rsi(df['Close'])
-        df['RSI_7'] = self.calculate_rsi(df['Close'], period=7)
-        
-        # MACD
-        df['MACD'], df['Signal'], df['Histogram'] = self.calculate_macd(df['Close'])
-        
-        # Stochastic
-        df['Stoch_K'], df['Stoch_D'] = self.calculate_stochastic(df)
-        
-        # Bollinger Bands
-        df['BB_Upper'], df['BB_Middle'], df['BB_Lower'] = self.calculate_bollinger_bands(df['Close'])
-        
-        # Moving Averages
-        df['MA5'] = df['Close'].rolling(5).mean()
-        df['MA10'] = df['Close'].rolling(10).mean()
-        df['MA20'] = df['Close'].rolling(20).mean()
-        df['MA50'] = df['Close'].rolling(50).mean()
-        df['MA200'] = df['Close'].rolling(200).mean() if len(df) > 200 else None
-        
-        # Volume
-        df['Volume_MA20'] = df['Volume'].rolling(20).mean()
-        df['Volume_Ratio'] = df['Volume'] / df['Volume_MA20']
-        
-        # ATR
-        df['ATR'] = self.calculate_atr(df)
-        df['ATR_Pct'] = (df['ATR'] / df['Close']) * 100
-        
-        # Support/Resistance
-        df['Resistance_20'] = df['High'].rolling(20).max()
-        df['Support_20'] = df['Low'].rolling(20).min()
-        df['Resistance_50'] = df['High'].rolling(50).max() if len(df) > 50 else None
-        df['Support_50'] = df['Low'].rolling(50).min() if len(df) > 50 else None
-        
-        return df
+    """เพิ่ม indicators ทั้งหมดลงใน DataFrame"""
+    
+    # ตรวจสอบชื่อคอลัมน์ (tvdatafeed ใช้ตัวพิมพ์เล็ก)
+    column_map = {
+        'open': 'Open',
+        'high': 'High', 
+        'low': 'Low',
+        'close': 'Close',
+        'volume': 'Volume'
+    }
+    
+    # สร้างคอลัมน์ใหม่ให้ตรงกับที่แอปใช้
+    for old, new in column_map.items():
+        if old in df.columns:
+            df[new] = df[old]
+    
+    # RSI
+    df['RSI_14'] = self.calculate_rsi(df['Close'])
+    df['RSI_7'] = self.calculate_rsi(df['Close'], period=7)
+    
+    # MACD
+    macd, signal, hist = self.calculate_macd(df['Close'])
+    df['MACD'] = macd
+    df['Signal'] = signal
+    df['Histogram'] = hist
+    
+    # Moving Averages
+    df['MA20'] = df['Close'].rolling(20).mean()
+    df['MA50'] = df['Close'].rolling(50).mean()
+    
+    # Bollinger Bands
+    df['BB_Upper'] = df['Close'].rolling(20).mean() + 2 * df['Close'].rolling(20).std()
+    df['BB_Lower'] = df['Close'].rolling(20).mean() - 2 * df['Close'].rolling(20).std()
+    
+    # Volume
+    df['Volume_MA20'] = df['Volume'].rolling(20).mean()
+    df['Volume_Ratio'] = df['Volume'] / df['Volume_MA20']
+    
+    # Support/Resistance
+    df['Resistance_20'] = df['High'].rolling(20).max()
+    df['Support_20'] = df['Low'].rolling(20).min()
+    
+    # ATR
+    df['ATR'] = self.calculate_atr(df)
+    df['ATR_Pct'] = (df['ATR'] / df['Close']) * 100
+    
+    return df
     
     def analyze_hunter_strategy(self, df, bid_volumes=None, offer_volumes=None):
         """วิเคราะห์ตามกลยุทธ์นายพราน"""
