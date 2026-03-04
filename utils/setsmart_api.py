@@ -15,7 +15,7 @@ class SETSmartAPI:
         self.base_url = "https://www.setsmart.com/api/listed-company-api"
         self.last_call = 0
         self.min_interval = 3
-        self.use_mock = False
+        self.use_mock = False  # เพิ่มตรงนี้
         
     def _call_api(self, endpoint, params):
         elapsed = time.time() - self.last_call
@@ -71,11 +71,11 @@ class SETSmartAPI:
         return self._get_mock_financial(symbol)
     
     def _get_mock_price(self, symbol):
-        mock = {
+        mock_prices = {
             'PTT': 35.25, 'SCB': 142.50, 'TISCO': 112.00,
             'AOT': 48.50, 'HMPRO': 6.60, 'SIRI': 1.33, 'PTG': 8.70
         }
-        price = mock.get(symbol, 100.00)
+        price = mock_prices.get(symbol, 100.00)
         return {
             'success': True,
             'price': price,
@@ -85,13 +85,19 @@ class SETSmartAPI:
         }
     
     def _get_mock_financial(self, symbol):
-        mock = {
+        mock_data = {
             'PTT': {'pe': 10.2, 'pbv': 1.2, 'roe': 15.3, 'de': 0.6, 'dividend_yield': 5.0},
             'SCB': {'pe': 8.1, 'pbv': 0.8, 'roe': 10.2, 'de': 1.0, 'dividend_yield': 7.6},
             'TISCO': {'pe': 10.3, 'pbv': 1.5, 'roe': 16.1, 'de': 0.8, 'dividend_yield': 7.7}
         }
-        data = mock.get(symbol, {'pe': 12, 'pbv': 1.2, 'roe': 12, 'de': 1, 'dividend_yield': 4})
-        return {'success': True, **data}
+        data = mock_data.get(symbol, {'pe': 12, 'pbv': 1.2, 'roe': 12, 'de': 1, 'dividend_yield': 4})
+        data['success'] = True
+        return data
     
     def set_use_mock(self, use_mock):
+        """เปลี่ยนโหมดการใช้ข้อมูล"""
         self.use_mock = use_mock
+        if use_mock:
+            print("🔧 ใช้ข้อมูลตัวอย่าง (Mock Mode)")
+        else:
+            print("✅ ใช้ API จริง (Live Mode)")
