@@ -1,0 +1,7 @@
+{
+    "settrade_service_url": "http://localhost:5001",
+    "tv_symbol_format": "SET:{}",
+    "default_interval": "1D",
+    "default_bars": 200,
+    "auto_start_docker": true
+}
