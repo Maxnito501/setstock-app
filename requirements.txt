@@ -17,3 +17,5 @@ scipy==1.11.3
 pytz==2023.3
 python-dotenv==1.0.0
 rich==13.7.1
+
+tvkit
