@@ -136,7 +136,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⚙️ ตั้งค่า")
     
-    # เลือกโหมดข้อมูล
+    # เลือกโหมดข้อมูล - แก้ไขตรงนี้
     current_mode = api.use_mock
     use_mock = st.checkbox("ใช้ข้อมูลตัวอย่าง (Mock Mode)", value=current_mode)
     if use_mock != current_mode:
@@ -173,7 +173,7 @@ def calculate_buffett_score(fin_data):
     score = 0
     details = []
     
-    # 1. ROE
+    # 1. ROE (30 คะแนน)
     roe = fin_data.get('roe', 0)
     if roe >= 20:
         score += 30
@@ -187,7 +187,7 @@ def calculate_buffett_score(fin_data):
     else:
         details.append({"ปัจจัย": "ROE", "ค่า": f"{roe:.1f}%", "คะแนน": 0, "สถานะ": "ต่ำ"})
     
-    # 2. P/E
+    # 2. P/E (25 คะแนน)
     pe = fin_data.get('pe', 100)
     if pe <= 10:
         score += 25
@@ -204,7 +204,7 @@ def calculate_buffett_score(fin_data):
     else:
         details.append({"ปัจจัย": "P/E", "ค่า": f"{pe:.1f}", "คะแนน": 0, "สถานะ": "แพงมาก"})
     
-    # 3. D/E
+    # 3. D/E (20 คะแนน)
     de = fin_data.get('de', 100)
     if de <= 0.3:
         score += 20
@@ -218,7 +218,7 @@ def calculate_buffett_score(fin_data):
     else:
         details.append({"ปัจจัย": "D/E", "ค่า": f"{de:.2f}", "คะแนน": 0, "สถานะ": "เสี่ยงสูง"})
     
-    # 4. EPS Growth
+    # 4. EPS Growth (15 คะแนน)
     growth = fin_data.get('eps_growth', 0)
     if growth >= 15:
         score += 15
@@ -232,7 +232,7 @@ def calculate_buffett_score(fin_data):
     else:
         details.append({"ปัจจัย": "EPS Growth", "ค่า": f"{growth:.1f}%", "คะแนน": 0, "สถานะ": "ช้า"})
     
-    # 5. Profit Margin
+    # 5. Profit Margin (10 คะแนน)
     margin = fin_data.get('profit_margin', 0)
     if margin >= 20:
         score += 10
