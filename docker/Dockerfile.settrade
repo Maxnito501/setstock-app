@@ -1,0 +1,14 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# ติดตั้ง dependencies
+RUN pip install --upgrade pip
+RUN pip install flask yfinance
+
+# คัดลอกไฟล์ service
+COPY addons/settrade_service.py .
+
+# รัน service
+EXPOSE 5000
+CMD ["python", "settrade_service.py"]
