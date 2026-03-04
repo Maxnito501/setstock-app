@@ -1,9 +1,8 @@
 """
-หน้า 2: วิเคราะห์หุ้นเล่นสั้น (ตัวเต็ม)
-- รองรับการ Refresh และ Clear Cache
-- กราฟเทคนิคอลครบ (RSI, MACD, Stochastic, Bollinger Bands)
-- วิเคราะห์กลยุทธ์นายพราน
-- จุดซื้อขาย Cut Loss
+หน้า 2: วิเคราะห์หุ้นเล่นสั้น (Hybrid Version)
+- ใช้ TradingView (tvkit) เป็นหลัก
+- เรียก Settrade API จาก Docker สำหรับ Bid/Offer
+- รองรับ Python 3.13
 """
 
 import streamlit as st
@@ -13,30 +12,35 @@ from plotly.subplots import make_subplots
 from datetime import datetime
 import sys
 import os
+import asyncio
 
 # เพิ่ม path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import ตัวช่วย
-from utils.yahoo_fetcher import YahooFetcher
+from addons.hybrid_fetcher import HybridFetcher
+from addons.docker_manager import DockerManager
 from utils.technical_analyzer import TechnicalAnalyzer
 
 # ตั้งค่าเพจ
 st.set_page_config(
-    page_title="หุ้นเล่นสั้น",
+    page_title="หุ้นเล่นสั้น (Hybrid)",
     page_icon="⚡",
     layout="wide"
 )
 
 # สร้าง instances
-fetcher = YahooFetcher()
+fetcher = HybridFetcher()
 analyzer = TechnicalAnalyzer()
+docker = DockerManager()
 
-# Initialize session state สำหรับ force refresh
+# Initialize session state
 if 'force_refresh' not in st.session_state:
     st.session_state.force_refresh = False
 if 'last_symbol' not in st.session_state:
     st.session_state.last_symbol = 'ADVANC'
+if 'docker_status' not in st.session_state:
+    st.session_state.docker_status = docker.get_container_status()
 
 # CSS
 st.markdown("""
@@ -60,34 +64,11 @@ st.markdown("""
     .panic { background: #f8d7da; border-left: 5px solid #dc3545; }
     .tired { background: #e2e3e5; border-left: 5px solid #6c757d; }
     .trend { background: #cce5ff; border-left: 5px solid #007bff; }
-    .buy-box {
-        background: #10b981;
-        color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        text-align: center;
-    }
-    .sell-box {
-        background: #ef4444;
-        color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        text-align: center;
-    }
-    .wait-box {
-        background: #f59e0b;
-        color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        text-align: center;
-    }
-    .refresh-button {
-        background: #3b82f6;
-        color: white;
+    .docker-status {
+        background: #f0f2f6;
         padding: 0.5rem;
         border-radius: 5px;
-        text-align: center;
-        cursor: pointer;
+        font-size: 0.9rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -97,7 +78,7 @@ st.markdown("""
 <div style="display: flex; align-items: center; justify-content: space-between;">
     <div style="display: flex; align-items: center;">
         <h1>⚡ วิเคราะห์หุ้นเล่นสั้น</h1>
-        <span class="version-badge">V2.0 พร้อม Refresh</span>
+        <span class="version-badge">Hybrid v1.0</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -110,8 +91,19 @@ with st.sidebar:
     st.subheader("🔍 เลือกหุ้น")
     
     # รายชื่อหุ้น
-    stock_list = list(fetcher.thai_stocks.keys())
-    selected_symbol = st.selectbox("เลือกหุ้น", stock_list, index=stock_list.index(st.session_state.last_symbol) if st.session_state.last_symbol in stock_list else 0)
+    stock_list = [
+        'ADVANC', 'AOT', 'BDMS', 'BH', 'BTS', 'CPALL', 'CPF', 'CRC',
+        'DTAC', 'GULF', 'INTUCH', 'IVL', 'KBANK', 'KTB', 'PTT', 'PTTEP',
+        'SCB', 'SCC', 'SIRI', 'TISCO', 'TRUE', 'BANPU', 'CHG', 'COM7',
+        'EA', 'JAS', 'LH', 'MINT', 'PTG', 'RATCH', 'SAWAD', 'TOP', 'TU', 'WHA', 'HMPRO'
+    ]
+    
+    selected_symbol = st.selectbox(
+        "เลือกหุ้น", 
+        stock_list, 
+        index=stock_list.index(st.session_state.last_symbol) 
+        if st.session_state.last_symbol in stock_list else 0
+    )
     
     # อัปเดต session state
     if selected_symbol != st.session_state.last_symbol:
@@ -120,80 +112,97 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("📊 ตั้งค่า")
-    period = st.selectbox("ช่วงเวลา", ["1mo", "3mo", "6mo", "1y"], index=1)
+    period = st.selectbox("ช่วงเวลา", ["1D", "5D", "1M", "3M", "6M", "1Y"], index=3)
     cutloss_pct = st.slider("Cut Loss %", 2, 10, 5)
     takeprofit_pct = st.slider("Take Profit %", 3, 20, 10)
     
-    # ===== จัดการ Cache =====
+    # ===== สถานะ Docker =====
     st.markdown("---")
-    st.subheader("🔄 จัดการข้อมูล")
+    st.subheader("🐳 Docker Status")
+    
+    docker_status = st.session_state.docker_status
+    status_color = "🟢" if docker_status.get('service_ready') else "🔴" if docker_status.get('docker_installed') else "⚪"
+    st.markdown(f"""
+    <div class="docker-status">
+        {status_color} Docker: {'ติดตั้ง' if docker_status.get('docker_installed') else 'ไม่มี'}<br>
+        {'🟢' if docker_status.get('container_running') else '🔴'} Container: {'กำลังรัน' if docker_status.get('container_running') else 'หยุด'}<br>
+        {'🟢' if docker_status.get('service_ready') else '🔴'} Service: {'พร้อม' if docker_status.get('service_ready') else 'ไม่พร้อม'}<br>
+    </div>
+    """, unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🧹 ล้าง Cache", use_container_width=True):
-            fetcher.clear_all_cache()
-            st.success("✅ ล้าง cache เรียบร้อย")
-            st.rerun()
+        if st.button("▶️ Start Docker", use_container_width=True):
+            with st.spinner("กำลังเริ่ม Docker..."):
+                result = docker.start_container(build=True)
+                if result['success']:
+                    st.success("✅ Docker started")
+                    st.session_state.docker_status = docker.get_container_status()
+                    st.rerun()
+                else:
+                    st.error(f"❌ {result.get('error', 'Failed')}")
     
     with col2:
-        if st.button("⚡ รีเฟรช", use_container_width=True):
-            st.session_state.force_refresh = True
+        if st.button("⏹️ Stop Docker", use_container_width=True):
+            docker.stop_container()
+            st.session_state.docker_status = docker.get_container_status()
             st.rerun()
     
-    # แสดงสถานะ cache
-    st.caption(f"หุ้นปัจจุบัน: {selected_symbol}")
-    
-    # ===== ข้อมูล Bid/Offer =====
+    # ===== ปุ่ม Refresh =====
     st.markdown("---")
-    st.subheader("🐋 ข้อมูล Bid/Offer")
-    use_bid_offer = st.checkbox("ป้อนข้อมูล Bid/Offer")
-    
-    bid_text = ""
-    offer_text = ""
-    if use_bid_offer:
-        bid_text = st.text_area("Bid 5 ช่อง", placeholder="1200 2500 3800 1500 900", height=100)
-        offer_text = st.text_area("Offer 5 ช่อง", placeholder="800 1900 3200 4500 2300", height=100)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 รีเฟรช", use_container_width=True):
+            st.session_state.force_refresh = True
+            st.rerun()
+    with col2:
+        if st.button("🧹 ล้าง Cache", use_container_width=True):
+            st.cache_data.clear()
+            st.success("✅ Cache cleared")
+            st.rerun()
 
 # ================== ดึงข้อมูล ==================
 
-# ทดสอบการเชื่อมต่อ
-if not fetcher.test_connection(selected_symbol):
-    st.warning("⚠️ กำลังทดสอบการเชื่อมต่อ Yahoo Finance...")
+# แปลง period
+period_map = {
+    "1D": "1D", "5D": "5D", "1M": "1M", 
+    "3M": "3M", "6M": "6M", "1Y": "1Y"
+}
+tv_interval = period_map.get(period, "3M")
 
 # ดึงข้อมูล
 with st.spinner(f"📥 กำลังโหลดข้อมูล {selected_symbol}..."):
-    if st.session_state.force_refresh:
-        data = fetcher.force_refresh(selected_symbol, period)
-        st.session_state.force_refresh = False
-    else:
-        data = fetcher.fetch_data(selected_symbol, period=period)
+    # ตรวจสอบว่าต้องการ Bid/Offer หรือไม่
+    get_bid_offer = st.session_state.docker_status.get('service_ready', False)
+    
+    data = fetcher.get_sync_data(
+        symbol=selected_symbol,
+        interval=tv_interval,
+        bars=200,
+        get_bid_offer=get_bid_offer
+    )
 
-if data is None:
-    st.error(f"❌ ไม่สามารถดึงข้อมูล {selected_symbol} ได้")
-    st.info("""
-    **สาเหตุที่เป็นไปได้:**
-    - Yahoo Finance อาจมีปัญหา
-    - การเชื่อมต่ออินเทอร์เน็ตไม่เสถียร
-    - เซิร์ฟเวอร์ Yahoo ตอบสนองช้า
+# ตรวจสอบผลลัพธ์
+if not data['tradingview']['success']:
+    st.error(f"❌ ไม่สามารถดึงข้อมูล {selected_symbol} จาก TradingView ได้")
+    st.info(f"สาเหตุ: {data['tradingview'].get('error', 'Unknown error')}")
     
-    **แนะนำ:**
-    - กดปุ่ม "รีเฟรช" ด้านซ้าย
-    - หรือกด "ล้าง Cache" แล้วลองใหม่
-    """)
+    if 'solution' in data['tradingview']:
+        st.code(data['tradingview']['solution'])
     
-    # แสดงปุ่มให้ลองใหม่
-    if st.button("🔄 ลองใหม่อีกครั้ง"):
+    if st.button("🔄 ลองใหม่"):
         st.rerun()
     st.stop()
 
-df = data['df']
+# ดึง DataFrame
+df = data['tradingview']['df']
 
 # คำนวณ indicators
 df = analyzer.add_all_indicators(df)
 
 # ข้อมูลล่าสุด
 last = df.iloc[-1]
-prev = df.iloc[-2]
+prev = df.iloc[-2] if len(df) > 1 else last
 
 # ================== แสดงข้อมูลเบื้องต้น ==================
 
@@ -219,49 +228,47 @@ with col4:
     vol_color = "🔴" if vol_ratio > 1.5 else "🟢" if vol_ratio < 0.7 else "⚪"
     st.metric("Volume Ratio", f"{vol_color} {vol_ratio:.2f}x")
 
-# ================== กลยุทธ์นายพราน ==================
+# ================== กลยุทธ์นายพราน (Bid/Offer) ==================
 
-st.markdown("---")
-st.subheader("🐋 วิเคราะห์ตามกลยุทธ์นายพราน")
-
-# แปลง Bid/Offer ที่ป้อน
-bid_volumes = None
-offer_volumes = None
-
-if use_bid_offer and bid_text and offer_text:
-    try:
-        bid_volumes = [int(x) for x in bid_text.split()]
-        offer_volumes = [int(x) for x in offer_text.split()]
-    except:
-        st.warning("⚠️ รูปแบบข้อมูล Bid/Offer ไม่ถูกต้อง")
-
-# วิเคราะห์กลยุทธ์
-hunter = analyzer.analyze_hunter_strategy(df, bid_volumes, offer_volumes)
-
-# แสดงกลยุทธ์ที่พบ
-if hunter['strategies']:
-    cols = st.columns(min(len(hunter['strategies']), 3))
-    for i, strategy in enumerate(hunter['strategies']):
-        with cols[i % 3]:
-            box_class = {
-                'whale_rider': 'whale-rider',
-                'reversal': 'reversal',
-                'panic': 'panic',
-                'tired': 'tired',
-                'trend': 'trend'
-            }.get(strategy.get('name', '').split()[0], '')
-            
-            st.markdown(f"""
-            <div class="strategy-box {box_class}">
-                <h3>{strategy['name']}</h3>
-                <p><b>{strategy['action']}</b></p>
-                <p>{strategy['desc']}</p>
-                <p>ความเชื่อมั่น: {strategy['confidence']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-if hunter['signals']:
-    st.info("🔄 " + " | ".join(hunter['signals']))
+if data.get('bid_offer') and data['bid_offer']['success']:
+    st.markdown("---")
+    st.subheader("🐋 วิเคราะห์วอลุ่ม 5 ช่อง (จาก Settrade)")
+    
+    bid_offer = data['bid_offer']
+    analysis = fetcher.analyze_volume_layers(bid_offer)
+    
+    if analysis:
+        # เลือก class ตามกลยุทธ์
+        strategy_class = {
+            '🐋 Whale Rider': 'whale-rider',
+            '🎯 จับจังหวะกลับตัว': 'reversal',
+            '💀 หนีทันที': 'panic',
+            '🎣 รอซ้ำยามเปลี้ย': 'tired'
+        }.get(analysis['strategy'], '')
+        
+        st.markdown(f"""
+        <div class="strategy-box {strategy_class}">
+            <h3>{analysis['strategy']}</h3>
+            <p><b>{analysis['action']}</b></p>
+            <p>{analysis['desc']}</p>
+            <p>วอลุ่มซื้อ 3 ช่อง: {analysis['bid_3']:,} | วอลุ่มขาย 3 ช่อง: {analysis['offer_3']:,}</p>
+            <p>อัตราส่วน: {analysis['ratio']:.2f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # แสดง Bid/Offer 5 ช่อง
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### 🟢 Bid 5 ช่อง")
+            for i, b in enumerate(bid_offer['bid'][:5], 1):
+                st.markdown(f"B{i}: ฿{b['price']:.2f} | {b['volume']:,}")
+        
+        with col2:
+            st.markdown("#### 🔴 Offer 5 ช่อง")
+            for i, o in enumerate(bid_offer['offer'][:5], 1):
+                st.markdown(f"O{i}: ฿{o['price']:.2f} | {o['volume']:,}")
+else:
+    st.info("ℹ️ Docker service ไม่พร้อม ไม่มีข้อมูล Bid/Offer")
 
 # ================== Tabs ==================
 
@@ -359,16 +366,12 @@ with tab2:
     
     with col1:
         st.markdown("### 📊 สถานะปัจจุบัน")
-        st.markdown(f"**แนวโน้ม:** {hunter['primary'] if hunter['primary'] else 'sideways'}")
+        st.markdown(f"**แนวโน้ม:** {'ขาขึ้น' if last['Close'] > last['MA20'] else 'ขาลง'}")
         st.markdown(f"**RSI (14):** {last['RSI_14']:.1f}")
-        st.markdown(f"**RSI (7):** {last['RSI_7']:.1f}")
         st.markdown(f"**MACD:** {'Bullish' if last['MACD'] > last['Signal'] else 'Bearish'}")
-        st.markdown(f"**Stochastic:** {last['Stoch_K']:.1f}")
         st.markdown(f"**ATR:** {last['ATR_Pct']:.2f}%")
         st.markdown(f"**แนวรับ 20:** ฿{last['Support_20']:.2f}")
         st.markdown(f"**แนวต้าน 20:** ฿{last['Resistance_20']:.2f}")
-        if last['MA50'] and not pd.isna(last['MA50']):
-            st.markdown(f"**MA50:** ฿{last['MA50']:.2f}")
     
     with col2:
         st.markdown("### 💰 จุดซื้อขายแนะนำ")
@@ -388,26 +391,6 @@ with tab2:
         st.markdown("#### ⛔ Cut Loss")
         cut_diff = ((points['cut_loss'] - points['current_price']) / points['current_price']) * 100
         st.markdown(f"- ฿{points['cut_loss']:.2f} ({cut_diff:+.1f}%)")
-        
-        st.markdown("#### 🎯 Take Profit")
-        tp1_diff = ((points['take_profit_1'] - points['current_price']) / points['current_price']) * 100
-        tp2_diff = ((points['take_profit_2'] - points['current_price']) / points['current_price']) * 100
-        st.markdown(f"- 1: ฿{points['take_profit_1']:.2f} ({tp1_diff:+.1f}%)")
-        st.markdown(f"- 2: ฿{points['take_profit_2']:.2f} ({tp2_diff:+.1f}%)")
-        
-        # Reward/Risk
-        risk = points['current_price'] - points['cut_loss']
-        reward = points['take_profit_1'] - points['current_price']
-        rr_ratio = reward / risk if risk > 0 else 0
-        
-        st.markdown("---")
-        st.markdown(f"**Reward/Risk:** {rr_ratio:.2f}")
-        if rr_ratio >= 2:
-            st.success("✅ คุ้มค่า")
-        elif rr_ratio >= 1:
-            st.warning("⚠️ พอรับได้")
-        else:
-            st.error("❌ ไม่คุ้ม")
 
 # ================== TAB 3: ข้อมูลเพิ่มเติม ==================
 
@@ -424,25 +407,11 @@ with tab3:
         st.markdown(f"**วอลุ่มเฉลี่ย 20:** {last['Volume_MA20']:,.0f}")
     
     with col2:
-        st.markdown("### 📊 ข้อมูลบริษัท")
-        st.markdown(f"**ชื่อ:** {data['company_name']}")
-        st.markdown(f"**หมวด:** {data['sector']}")
-        st.markdown(f"**52-week สูง:** ฿{data['high_52w']:.2f}")
-        st.markdown(f"**52-week ต่ำ:** ฿{data['low_52w']:.2f}")
-        st.markdown(f"**PE:** {data['info'].get('trailingPE', 'N/A')}")
-        st.markdown(f"**PB:** {data['info'].get('priceToBook', 'N/A')}")
-    
-    # แสดงข้อมูลการโหลด
-    st.markdown("---")
-    st.markdown("### ℹ️ ข้อมูลการโหลด")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.caption(f"โหลดเมื่อ: {data['last_update'][:10]}")
-    with col2:
-        st.caption(f"เวลา: {data['last_update'][11:19]}")
-    with col3:
-        cache_status = "ใช้ Cache" if not st.session_state.force_refresh else "โหลดใหม่"
-        st.caption(f"สถานะ: {cache_status}")
+        st.markdown("### ℹ️ ข้อมูลระบบ")
+        st.markdown(f"**แหล่งข้อมูลหลัก:** TradingView (tvkit)")
+        st.markdown(f"**Bid/Offer:** {'พร้อม' if data.get('bid_offer') else 'ไม่พร้อม'}")
+        st.markdown(f"**เวลาที่โหลด:** {data['timestamp'][:19]}")
+        st.markdown(f"**จำนวนข้อมูล:** {len(df)} วัน")
 
 # ================== Footer ==================
 
@@ -453,4 +422,4 @@ with col1:
 with col2:
     st.caption(f"ข้อมูลล่าสุด: {df.index[-1].strftime('%Y-%m-%d')}")
 with col3:
-    st.caption("⚡ กดรีเฟรชที่เมนูด้านซ้ายเมื่อข้อมูลไม่มา")
+    st.caption("⚡ Hybrid: TradingView + Settrade (Docker)")
