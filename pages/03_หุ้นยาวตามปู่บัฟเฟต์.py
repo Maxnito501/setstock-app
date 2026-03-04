@@ -136,7 +136,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⚙️ ตั้งค่า")
     
-    # เลือกโหมดข้อมูล - แก้ไขตรงนี้
+    # เลือกโหมดข้อมูล
     current_mode = api.use_mock
     use_mock = st.checkbox("ใช้ข้อมูลตัวอย่าง (Mock Mode)", value=current_mode)
     if use_mock != current_mode:
