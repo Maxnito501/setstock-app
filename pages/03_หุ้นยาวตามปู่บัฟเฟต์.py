@@ -405,7 +405,8 @@ with col2:
                 rec_text = "ซื้อสะสม"
                 rec_color = "buy-signal"
             elif score >= 60:
-                st.markdown(f"""
+                st.markdown(f""
                 <div class="score-good">
                     <h2>📊 Buffett Score: {score}</h2>
                     <p>ดี - ผ่านเกณฑ์พื้นฐาน
+
